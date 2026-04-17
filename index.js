@@ -61,7 +61,8 @@ const MARKET_DATA_PROVIDER = String(process.env.MARKET_DATA_PROVIDER || "twelved
 const TWELVEDATA_API_KEY = process.env.TWELVEDATA_API_KEY || "";
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
 const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
-const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
+const FRONTEND_URL = process.env.FRONTEND_URL || "https://real-time-fintech-trading-engine-da.vercel.app";
+const BACKEND_URL = process.env.BACKEND_URL || "";
 const SMTP_HOST = process.env.SMTP_HOST || "";
 const SMTP_PORT = Number(process.env.SMTP_PORT || 587);
 const SMTP_SECURE = String(process.env.SMTP_SECURE || "false").toLowerCase() === "true";
@@ -70,7 +71,10 @@ const SMTP_PASS = process.env.SMTP_PASS || "";
 const SMTP_FROM = process.env.SMTP_FROM || SMTP_USER || "";
 const GOOGLE_CLIENT_ID = String(process.env.GOOGLE_CLIENT_ID || "").trim();
 const GOOGLE_CLIENT_SECRET = String(process.env.GOOGLE_CLIENT_SECRET || "").trim();
-const GOOGLE_REDIRECT_URI = String(process.env.GOOGLE_REDIRECT_URI || "http://localhost:3002/auth/google/callback").trim();
+const GOOGLE_REDIRECT_URI = String(
+    process.env.GOOGLE_REDIRECT_URI
+    || (BACKEND_URL ? new URL("/auth/google/callback", BACKEND_URL).toString() : "https://real-time-fintech-trading-engine-backend-5ao3.onrender.com/auth/google/callback")
+).trim();
 
 const normalizeSymbol = (symbol = "") => symbol.trim().toUpperCase();
 
