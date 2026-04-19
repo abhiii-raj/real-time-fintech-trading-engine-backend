@@ -71,10 +71,7 @@ const SMTP_PASS = process.env.SMTP_PASS || "";
 const SMTP_FROM = process.env.SMTP_FROM || SMTP_USER || "";
 const GOOGLE_CLIENT_ID = String(process.env.GOOGLE_CLIENT_ID || "").trim();
 const GOOGLE_CLIENT_SECRET = String(process.env.GOOGLE_CLIENT_SECRET || "").trim();
-const GOOGLE_REDIRECT_URI = String(
-    process.env.GOOGLE_REDIRECT_URI
-    || (BACKEND_URL ? new URL("/auth/google/callback", BACKEND_URL).toString() : "https://real-time-fintech-trading-engine-backend-5ao3.onrender.com/auth/google/callback")
-).trim();
+const GOOGLE_REDIRECT_URI = String(process.env.GOOGLE_REDIRECT_URI || "").trim();
 
 const normalizeSymbol = (symbol = "") => symbol.trim().toUpperCase();
 
@@ -311,6 +308,53 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i;
 const isValidEmail = (value = "") => EMAIL_REGEX.test(String(value).trim());
 
 const generateVerificationCode = () => String(Math.floor(100000 + Math.random() * 900000));
+
+const parseStatePayload = (rawState = "") => {
+    if (!rawState) {
+        return {};
+    }
+
+    try {
+        return JSON.parse(Buffer.from(String(rawState), "base64url").toString("utf8"));
+    } catch (error) {
+        return {};
+    }
+};
+
+const getRequestOrigin = (req) => {
+    const forwardedProtoRaw = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim();
+    const forwardedHostRaw = String(req.headers["x-forwarded-host"] || "").split(",")[0].trim();
+    const host = forwardedHostRaw || String(req.get("host") || "").trim();
+    const protocol = forwardedProtoRaw || req.protocol || "https";
+
+    if (!host) {
+        return "";
+    }
+
+    return `${protocol}://${host}`;
+};
+
+const buildGoogleCallbackUri = (req, statePayload = {}) => {
+    const stateRedirectUri = String(statePayload?.redirectUri || "").trim();
+    if (stateRedirectUri) {
+        return stateRedirectUri;
+    }
+
+    if (GOOGLE_REDIRECT_URI) {
+        return GOOGLE_REDIRECT_URI;
+    }
+
+    if (BACKEND_URL) {
+        return new URL("/auth/google/callback", BACKEND_URL).toString();
+    }
+
+    const requestOrigin = getRequestOrigin(req);
+    if (!requestOrigin) {
+        return "";
+    }
+
+    return new URL("/auth/google/callback", requestOrigin).toString();
+};
 
 const smtpTransport = SMTP_HOST && SMTP_FROM
     ? nodemailer.createTransport({
@@ -742,12 +786,17 @@ app.get("/auth/google/start", (req, res) => {
         return res.status(500).send("Google OAuth is not configured");
     }
 
+    const googleCallbackUri = buildGoogleCallbackUri(req);
+    if (!googleCallbackUri) {
+        return res.status(500).send("Google OAuth callback URI is not configured");
+    }
+
     const returnTo = String(req.query?.returnTo || "").trim();
     const state = crypto.randomBytes(16).toString("hex");
-    const statePayload = Buffer.from(JSON.stringify({ state, returnTo }), "utf8").toString("base64url");
+    const statePayload = Buffer.from(JSON.stringify({ state, returnTo, redirectUri: googleCallbackUri }), "utf8").toString("base64url");
     const query = querystring.stringify({
         client_id: GOOGLE_CLIENT_ID,
-        redirect_uri: GOOGLE_REDIRECT_URI,
+        redirect_uri: googleCallbackUri,
         response_type: "code",
         scope: "openid email profile",
         access_type: "offline",
@@ -770,10 +819,15 @@ app.get("/auth/google/callback", async (req, res) => {
         }
 
         const statePayload = String(req.query?.state || "").trim();
+        const decodedState = parseStatePayload(statePayload);
+        const googleCallbackUri = buildGoogleCallbackUri(req, decodedState);
+        if (!googleCallbackUri) {
+            return res.status(500).send("Google OAuth callback URI is not configured");
+        }
+
         let returnTo = `${FRONTEND_URL}/signup`;
         if (statePayload) {
             try {
-                const decodedState = JSON.parse(Buffer.from(statePayload, "base64url").toString("utf8"));
                 if (decodedState?.returnTo && String(decodedState.returnTo).startsWith("http")) {
                     returnTo = String(decodedState.returnTo);
                 }
@@ -786,7 +840,7 @@ app.get("/auth/google/callback", async (req, res) => {
             code,
             client_id: GOOGLE_CLIENT_ID,
             client_secret: GOOGLE_CLIENT_SECRET,
-            redirect_uri: GOOGLE_REDIRECT_URI,
+            redirect_uri: googleCallbackUri,
             grant_type: "authorization_code"
         });
 
